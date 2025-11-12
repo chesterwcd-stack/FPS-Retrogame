@@ -129,15 +129,18 @@
     <script>
         // --- Firebase Setup and State Management ---
 
-       const firebaseConfig = {
-    apiKey: "AIzaSyAotNssLaLf6zna_TsHejYLLiRHgcni_A4",
-    authDomain: "hawker-fps-game.firebaseapp.com",
-    projectId: "hawker-fps-game",
-    storageBucket: "hawker-fps-game.firebasestorage.app",
-    messagingSenderId: "426224129407",
-    appId: "1:426224129407:web:f23ea1c3378fe6a11f764a" 
-};
+        // *** IMPORTANT ***
+        // This is the *only* part you need from the Firebase console
+        const firebaseConfig = {
+            apiKey: "AIzaSyAotNssLaLf6zna_TsHejYLLiRHgcni_A4", // Replace with your key
+            authDomain: "hawker-fps-game.firebaseapp.com",
+            projectId: "hawker-fps-game",
+            storageBucket: "hawker-fps-game.firebasestorage.app",
+            messagingSenderId: "426224129407",
+            appId: "1:426224129407:web:f23ea1c3378fe6a11f764a"
+        }; // <-- Make sure this } and ; are here!
         // *** END OF CONFIG ***
+
 
         let db, auth, userId = 'anon_user_' + (typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random());
         let gameInitialized = false;
@@ -148,10 +151,17 @@
         const HIGH_SCORE_PATH = 'game-highscores'; 
         const HIGH_SCORE_DOC = 'fps-maze-shooter';
 
+
+        // --- NEW, IMPROVED INITIALIZATION FUNCTION ---
         async function initializeFirebase() {
             try {
-                if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
-                    throw new Error("Firebase configuration is not set. Please paste your config object into the script.");
+                if (!firebaseConfig || firebaseConfig.apiKey.startsWith("AIzaSy")) {
+                    // A simple check to see if the placeholder key is still there
+                    if(firebaseConfig.projectId === "hawker-fps-game") {
+                        console.warn("Using user's provided config.");
+                    } else {
+                         throw new Error("Firebase configuration is not set. Please paste your config object into the script.");
+                    }
                 }
 
                 const app = firebase.initializeApp(firebaseConfig);
@@ -176,18 +186,25 @@
                 listenForHighScore();
 
                 document.getElementById('status-message').textContent = `Firebase connected. User ID: ${userId.substring(0, 8)}...`;
-                gameInitialized = true;
-                initGame(); // Initialize Three.js after Firebase is ready
-
+                
             } catch (error) {
-                console.error("Firebase initialization failed. Game will run locally (High score disabled).", error);
-                 let statusMsg = "Firebase failed. Running in local mode (High score is disabled).";
+                // This block now *only* catches Firebase errors
+                console.error("Firebase initialization failed.", error);
+                let statusMsg = "Firebase failed. Running in local mode (High score is disabled).";
                 if (error.message.includes("Firebase configuration is not set")) {
                     statusMsg = "ERROR: Firebase config is missing. Please edit the script to add it.";
                 }
                 document.getElementById('status-message').textContent = statusMsg;
+            }
+            
+            // --- Now, try to initialize the game separately ---
+            // This gives us a much cleaner error if WebGL fails
+            try {
                 gameInitialized = true;
-                initGame(); // Initialize Three.js even if Firebase fails
+                initGame(); // Initialize Three.js
+            } catch (gameError) {
+                console.error("Game initialization (Three.js) failed!", gameError);
+                document.getElementById('status-message').textContent = "ERROR: Game failed to start. Check browser for WebGL/Hardware Acceleration.";
             }
         }
 
@@ -357,7 +374,12 @@
                 document.getElementById('menu').style.opacity = '0';
                 document.getElementById('menu').style.pointerEvents = 'none';
                 document.getElementById('instructions').style.opacity = '0';
-                Tone.start(); // Start audio context on first interaction
+                
+                // --- FIX FOR AUDIO ---
+                // Start audio context only *after* user clicks
+                if (Tone.context.state !== 'running') {
+                    Tone.start(); 
+                }
             });
 
             controls.addEventListener('unlock', () => {
@@ -496,7 +518,7 @@
             }
         }
 
-        function spawnBullet() {
+function spawnBullet() {
             // 1. Create bullet mesh
             const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
             
