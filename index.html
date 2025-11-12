@@ -65,50 +65,69 @@
       overlay.classList.add("hidden");
     }
 
-    // ---- Renderer creation with robust WebGL2 -> WebGL1 fallback
-    const canvas = document.createElement("canvas");
-    canvas.style.display = "block";
-    container.appendChild(canvas);
+    // --- Universal WebGL-compatible renderer setup ---
+function canGetWebGL(ctxName) {
+  const c = document.createElement("canvas");
+  const gl = c.getContext(ctxName, {
+    antialias: false,
+    alpha: false,
+    stencil: false,
+    depth: true,
+    premultipliedAlpha: true,
+  });
+  return !!gl;
+}
 
-    function ctxAvailable(type) {
-      try { return !!canvas.getContext(type, { alpha:false, antialias:true }); }
-      catch { return false; }
-    }
+let renderer = null;
+const rendererOpts = {
+  antialias: false,
+  alpha: false,
+  depth: true,
+  stencil: false,
+  premultipliedAlpha: true,
+  preserveDrawingBuffer: false,
+  powerPreference: "default" // safer for Macs
+};
 
-    let renderer = null;
-    try {
-      if (ctxAvailable("webgl2")) {
-        renderer = new THREE.WebGLRenderer({
-          canvas, antialias:true, alpha:false,
-          powerPreference:"high-performance", preserveDrawingBuffer:false
-        });
-      } else if (ctxAvailable("webgl") && THREE.WebGL1Renderer) {
-        renderer = new THREE.WebGL1Renderer({
-          canvas, antialias:true, alpha:false,
-          powerPreference:"high-performance", preserveDrawingBuffer:false
-        });
-      } else if (ctxAvailable("webgl")) {
-        // Fallback for builds without WebGL1Renderer export
-        renderer = new THREE.WebGLRenderer({
-          canvas, antialias:true, alpha:false,
-          powerPreference:"high-performance", preserveDrawingBuffer:false
-        });
-      }
-    } catch (e) { /* ignore and handle below */ }
+try {
+  if (canGetWebGL("webgl2")) {
+    renderer = new THREE.WebGLRenderer(rendererOpts);
+  } else if (canGetWebGL("webgl") && THREE.WebGL1Renderer) {
+    renderer = new THREE.WebGL1Renderer(rendererOpts);
+  } else if (canGetWebGL("webgl")) {
+    renderer = new THREE.WebGLRenderer(rendererOpts);
+  }
+} catch (e) {
+  renderer = null;
+}
 
-    if (!renderer) {
-      showOverlay("WebGL is unavailable. Try another browser or disable extensions.");
-      throw new Error("No WebGL context available");
-    }
+if (!renderer) {
+  const msg = document.createElement("div");
+  msg.style.position = "absolute";
+  msg.style.top = "50%";
+  msg.style.left = "50%";
+  msg.style.transform = "translate(-50%,-50%)";
+  msg.style.background = "rgba(0,0,0,.75)";
+  msg.style.color = "#fff";
+  msg.style.padding = "18px 22px";
+  msg.style.border = "1px solid #3f3f3f";
+  msg.style.font = "12px/1.4 monospace";
+  msg.style.maxWidth = "560px";
+  msg.style.textAlign = "center";
+  msg.innerHTML =
+    "⚠️ WebGL is unavailable.<br/>" +
+    "Try a private window or Chrome/Firefox, and enable Hardware Acceleration.<br/>" +
+    "<small>(Safari: Develop → Experimental Features → WebGL 2.0 + WebGL via Metal)</small>";
+  container.appendChild(msg);
+  throw new Error("WebGL not available");
+}
 
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-    // Context lost handling (avoid hard crashes)
-    canvas.addEventListener("webglcontextlost", (e) => {
-      e.preventDefault();
-      showOverlay("Graphics context lost. Reload the page to continue.");
-    });
+const DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+renderer.setPixelRatio(DPR);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.LinearEncoding;
+renderer.shadowMap.enabled = false;
+container.appendChild(renderer.domElement);
 
     // ---- Scene / Camera / Controls
     const scene = new THREE.Scene();
