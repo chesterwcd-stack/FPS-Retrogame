@@ -1,102 +1,122 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>3D Maze FPS Shooter</title>
 
-  <!-- Tailwind (fine via CDN for this static deploy) -->
+  <!-- Tailwind (OK via CDN for static deploys) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Three.js + Pointer Lock Controls -->
+  <!-- Three.js + Pointer Lock Controls (v0.128 to match your build) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
 
-  <!-- Tone.js for audio -->
+  <!-- Tone.js (for simple SFX) -->
   <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
 
-  <!-- Optional Firebase imports (left here but we will bypass usage) -->
+  <style>
+    html, body { margin:0; height:100%; overflow:hidden; background:#0e0e0e; }
+    #overlayMsg {
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      pointer-events:none;
+    }
+    #overlayMsg > div {
+      background:rgba(0,0,0,.75); color:#fff; border:1px solid #3f3f3f;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      padding:14px 18px; border-radius:6px;
+    }
+  </style>
+</head>
+<body>
+  <!-- HUD -->
+  <div class="fixed top-2 left-2 text-xs text-white/90 font-mono z-50 space-y-1">
+    <div id="hud-score">Score: 0</div>
+    <div id="hud-health">Health: 100</div>
+    <div id="hud-ammo">Ammo: 30</div>
+    <div id="hud-tips" class="text-white/70">
+      Click to lock cursor • WASD to move • Mouse to aim • Space/Click to shoot
+    </div>
+  </div>
+
+  <!-- Canvas container -->
+  <div id="container" style="width:100%;height:100%;position:relative;"></div>
+  <div id="overlayMsg" class="hidden"><div id="overlayText"></div></div>
+
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-    import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-    /* ------------------------ config & globals ------------------------ */
-    // If you later want real backend, put your config here and flip ENABLE_BACKEND to true.
-    const ENABLE_BACKEND = false; // ← disabled for Vercel static deploy
-    const firebaseConfig = null;  // keep null to avoid accidental init
-
-    let app = null, auth = null, db = null;
-
-    /* ------------------------ init “firebase” (no-op) ------------------------ */
-    // Replaced to avoid errors when config is missing on static hosting.
+    /* =============== Minimal/no-op Firebase gate (keeps static deploys happy) =============== */
+    // If you later want backend, wire it here and set ENABLE_BACKEND=true.
+    const ENABLE_BACKEND = false;
     async function initializeFirebase() {
-      // Firebase disabled; run in local-only mode.
-      console.info("Firebase disabled; running in local mode.");
-      initGame(); // continue to game
+      console.info("Firebase disabled; running in local/offline mode.");
+      initGame();
     }
-    // End initializeFirebase
 
-    /* ------------------------ GAME CODE START ------------------------ */
-    // (Everything below is your existing game code; only small safe edits were made.)
+    /* ===================================== Game ===================================== */
+    const container = document.getElementById("container");
+    const overlay = document.getElementById("overlayMsg");
+    const overlayText = document.getElementById("overlayText");
 
-    // Simple DOM
-    const root = document.body;
-    root.style.margin = "0";
-    root.style.height = "100vh";
-    root.style.overflow = "hidden";
-    root.style.background = "#0e0e0e";
-    const hud = document.createElement("div");
-    hud.className = "fixed top-2 left-2 text-xs text-white/90 font-mono z-50 space-y-1";
-    hud.innerHTML = `
-      <div id="hud-score">Score: 0</div>
-      <div id="hud-health">Health: 100</div>
-      <div id="hud-ammo">Ammo: 30</div>
-      <div id="hud-tips" class="text-white/70">Click to lock cursor • WASD to move • Mouse to aim • Space to shoot</div>
-    `;
-    document.body.appendChild(hud);
+    function showOverlay(text) {
+      overlayText.textContent = text;
+      overlay.classList.remove("hidden");
+    }
+    function hideOverlay() {
+      overlay.classList.add("hidden");
+    }
 
-    // Container + Canvas
-    const container = document.createElement("div");
-    container.style.width = "100%";
-    container.style.height = "100%";
-    container.style.position = "relative";
-    document.body.appendChild(container);
+    // ---- Renderer creation with robust WebGL2 -> WebGL1 fallback
+    const canvas = document.createElement("canvas");
+    canvas.style.display = "block";
+    container.appendChild(canvas);
 
-    // WebGL renderer (guarded)
-    let renderer;
+    function ctxAvailable(type) {
+      try { return !!canvas.getContext(type, { alpha:false, antialias:true }); }
+      catch { return false; }
+    }
+
+    let renderer = null;
     try {
-      renderer = new THREE.WebGLRenderer({
-        antialias: false,
-        alpha: false,
-        powerPreference: "high-performance",
-        preserveDrawingBuffer: false,
-        failIfMajorPerformanceCaveat: false,
-      });
-    } catch (e) {
-      const msg = document.createElement("div");
-      msg.style.position = "absolute";
-      msg.style.top = "50%";
-      msg.style.left = "50%";
-      msg.style.transform = "translate(-50%,-50%)";
-      msg.style.background = "rgba(0,0,0,.7)";
-      msg.style.color = "#fff";
-      msg.style.padding = "16px 20px";
-      msg.style.border = "1px solid #3f3f3f";
-      msg.style.fontFamily = "monospace";
-      msg.textContent = "WebGL is unavailable. Try another browser or disable extensions.";
-      container.appendChild(msg);
-      throw e;
+      if (ctxAvailable("webgl2")) {
+        renderer = new THREE.WebGLRenderer({
+          canvas, antialias:true, alpha:false,
+          powerPreference:"high-performance", preserveDrawingBuffer:false
+        });
+      } else if (ctxAvailable("webgl") && THREE.WebGL1Renderer) {
+        renderer = new THREE.WebGL1Renderer({
+          canvas, antialias:true, alpha:false,
+          powerPreference:"high-performance", preserveDrawingBuffer:false
+        });
+      } else if (ctxAvailable("webgl")) {
+        // Fallback for builds without WebGL1Renderer export
+        renderer = new THREE.WebGLRenderer({
+          canvas, antialias:true, alpha:false,
+          powerPreference:"high-performance", preserveDrawingBuffer:false
+        });
+      }
+    } catch (e) { /* ignore and handle below */ }
+
+    if (!renderer) {
+      showOverlay("WebGL is unavailable. Try another browser or disable extensions.");
+      throw new Error("No WebGL context available");
     }
+
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    container.appendChild(renderer.domElement);
 
-    // Scene, camera, controls
+    // Context lost handling (avoid hard crashes)
+    canvas.addEventListener("webglcontextlost", (e) => {
+      e.preventDefault();
+      showOverlay("Graphics context lost. Reload the page to continue.");
+    });
+
+    // ---- Scene / Camera / Controls
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0f0a);
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+    const camera = new THREE.PerspectiveCamera(
+      70, window.innerWidth / window.innerHeight, 0.1, 1000
+    );
     camera.position.set(0, 1.6, 5);
     scene.add(camera);
 
@@ -104,8 +124,8 @@
     scene.add(controls.getObject());
 
     // Lights
-    const light = new THREE.HemisphereLight(0xffffff, 0x222233, 1.0);
-    scene.add(light);
+    const hem = new THREE.HemisphereLight(0xffffff, 0x222233, 1.0);
+    scene.add(hem);
 
     // Floor
     const floor = new THREE.Mesh(
@@ -115,97 +135,92 @@
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
 
-    // Basic walls/targets to shoot
+    // Targets
     const targets = new THREE.Group();
     scene.add(targets);
-    const targetGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-    const targetMat = new THREE.MeshStandardMaterial({ color: 0xff4444 });
+    const tGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    const tMat = new THREE.MeshStandardMaterial({ color: 0xff4444 });
+
     for (let i = 0; i < 24; i++) {
-      const t = new THREE.Mesh(targetGeo, targetMat.clone());
-      t.position.set((Math.random() - 0.5) * 40, 0.5 + Math.random() * 2, -10 - Math.random() * 60);
-      t.material.color.offsetHSL(Math.random() * 0.1, 0.2, 0);
-      t.userData.hp = 2;
-      targets.add(t);
+      const m = new THREE.Mesh(tGeo, tMat.clone());
+      m.position.set((Math.random() - 0.5) * 40, 0.5 + Math.random() * 2, -10 - Math.random() * 60);
+      m.material.color.offsetHSL(Math.random() * 0.1, 0.2, 0);
+      m.userData.hp = 2;
+      targets.add(m);
     }
 
-    // Movement (WASD)
+    // Movement
     const keys = new Set();
     let velocity = new THREE.Vector3();
     const speed = 5;
-    window.addEventListener("keydown", (e) => keys.add(e.code));
-    window.addEventListener("keyup", (e) => keys.delete(e.code));
+    addEventListener("keydown", (e) => keys.add(e.code));
+    addEventListener("keyup",   (e) => keys.delete(e.code));
 
-    // Audio: unlock on first gesture
-    let canShoot = true;
-    function unlockAudioOnce() {
+    // Audio unlock on first gesture
+    function unlockAudio() {
       if (Tone.context.state !== "running") {
         Tone.start().catch(() => {});
       }
-      window.removeEventListener("click", unlockAudioOnce);
-      window.removeEventListener("touchstart", unlockAudioOnce);
-      window.removeEventListener("keydown", unlockAudioOnce);
+      removeEventListener("click", unlockAudio);
+      removeEventListener("touchstart", unlockAudio);
+      removeEventListener("keydown", unlockAudio);
     }
-    window.addEventListener("click", unlockAudioOnce, { once: true });
-    window.addEventListener("touchstart", unlockAudioOnce, { once: true });
-    window.addEventListener("keydown", unlockAudioOnce, { once: true });
+    addEventListener("click", unlockAudio, { once:true });
+    addEventListener("touchstart", unlockAudio, { once:true });
+    addEventListener("keydown", unlockAudio, { once:true });
 
-    // Simple synth “pew” for shots
     const synth = new Tone.MembraneSynth().toDestination();
 
-    // Shoot
+    // Shooting
+    let canShoot = true;
     function shoot() {
       if (!canShoot) return;
       canShoot = false;
-      setTimeout(() => (canShoot = true), 120); // basic ROF limit
+      setTimeout(() => (canShoot = true), 120);
 
-      // audio
       if (Tone.context.state === "running") {
         synth.triggerAttackRelease("A2", "16n");
       }
 
-      // hit test via raycast from camera
-      const ray = new THREE.Raycaster(camera.getWorldPosition(new THREE.Vector3()), camera.getWorldDirection(new THREE.Vector3()));
+      const ray = new THREE.Raycaster(
+        camera.getWorldPosition(new THREE.Vector3()),
+        camera.getWorldDirection(new THREE.Vector3())
+      );
       const hits = ray.intersectObjects(targets.children, false);
       if (hits.length) {
-        const hit = hits[0].object;
-        hit.userData.hp -= 1;
-        if (hit.userData.hp <= 0) {
-          targets.remove(hit);
-          scene.remove(hit);
+        const obj = hits[0].object;
+        obj.userData.hp -= 1;
+        if (obj.userData.hp <= 0) {
+          targets.remove(obj);
+          scene.remove(obj);
           score += 10;
           document.getElementById("hud-score").textContent = `Score: ${score}`;
         } else {
-          hit.material.emissive = new THREE.Color(0x550000);
-          setTimeout(() => (hit.material.emissive = new THREE.Color(0x000000)), 80);
+          obj.material.emissive = new THREE.Color(0x550000);
+          setTimeout(() => (obj.material.emissive = new THREE.Color(0x000000)), 80);
         }
       }
     }
 
-    // Pointer lock handling
-    container.addEventListener("click", () => {
-      controls.lock();
-    });
+    // Pointer lock UX
+    container.addEventListener("click", () => controls.lock());
     document.addEventListener("pointerlockchange", () => {
       const tips = document.getElementById("hud-tips");
       if (document.pointerLockElement === renderer.domElement) {
         tips.textContent = "Shoot: Space/Click • Move: WASD • Unlock: Esc";
+        hideOverlay();
       } else {
-        tips.textContent = "Click to lock cursor • WASD to move • Space to shoot";
+        tips.textContent = "Click to lock cursor • WASD to move • Space/Click to shoot";
       }
     });
 
-    // Fire on space or click
-    window.addEventListener("keydown", (e) => {
-      if (e.code === "Space") shoot();
-    });
-    window.addEventListener("mousedown", (e) => {
+    addEventListener("keydown", (e) => { if (e.code === "Space") shoot(); });
+    addEventListener("mousedown", () => {
       if (document.pointerLockElement === renderer.domElement) shoot();
     });
 
-    // Basic state
-    let score = 0;
-    let health = 100;
-    let ammo = 30;
+    // State
+    let score = 0, health = 100, ammo = 30;
 
     // Loop
     let last = performance.now();
@@ -213,7 +228,6 @@
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
-      // movement
       velocity.set(0, 0, 0);
       if (keys.has("KeyW")) velocity.z -= 1;
       if (keys.has("KeyS")) velocity.z += 1;
@@ -229,21 +243,18 @@
     }
 
     // Resize
-    window.addEventListener("resize", () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(innerWidth, innerHeight);
     });
 
-    // Start the game (called after initializeFirebase in our no-op)
     function initGame() {
       requestAnimationFrame(animate);
     }
 
-    // Kick things off
+    // Kick off
     initializeFirebase();
-    /* ------------------------ GAME CODE END ------------------------ */
   </script>
-</head>
-<body></body>
+</body>
 </html>
