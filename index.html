@@ -1,795 +1,222 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Maze FPS Shooter</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Three.js and related libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
-    <!-- Tone.js for audio -->
-    <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
-    <!-- Firebase Libraries -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Corporate Ladder</title>
 
-        // Global variables for Firebase and Game State (accessible to the main script)
-        window.firebase = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged };
-        window.firestore = { getFirestore, doc, getDoc, setDoc, onSnapshot, setLogLevel };
-    </script>
-    <style>
-        /* Custom styles for a modern, dark theme */
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #1a202c; /* Tailwind gray-900 */
-            color: #e2e8f0; /* Tailwind gray-200 */
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-        #game-container {
-            position: relative;
-            width: 100%;
-            max-width: 900px;
-            height: 80vh;
-            max-height: 800px;
-            border-radius: 12px;
-            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.5);
-            overflow: hidden;
-        }
-        #overlay, #menu {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none; /* Allows clicks to pass through to canvas if not needed */
-            z-index: 10;
-        }
-        #menu {
-            background-color: rgba(26, 32, 44, 0.9);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            pointer-events: auto;
-            transition: opacity 0.3s;
-        }
-        #crosshair {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 8px;
-            height: 8px;
-            margin-top: -4px;
-            margin-left: -4px;
-            border: 1px solid white;
-            border-radius: 50%;
-            box-shadow: 0 0 5px white;
-        }
-        canvas {
-            display: block;
-        }
-        .score-box {
-            background-color: rgba(0, 0, 0, 0.6);
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .timer-box {
-            background-color: rgba(0, 0, 0, 0.6);
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-    </style>
+  <!-- Tailwind (CDN; fine for quick deploys) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Three.js + helpers -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/WebGL.js"></script>
+
+  <!-- Tone.js (audio) -->
+  <script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.min.js"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #0f2a14; /* deep green */
+      color: #e8f5ec;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      overflow: hidden;
+    }
+    #gameContainer {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(0,0,0,.45);
+      backdrop-filter: blur(2px);
+      z-index: 10;
+    }
+    #status {
+      position: absolute;
+      left: 12px;
+      bottom: 10px;
+      font-size: 12px;
+      opacity: .9;
+      z-index: 20;
+    }
+    canvas { display: block; outline: none; }
+  </style>
 </head>
 <body>
-
-    <div id="game-container">
-        <!-- Three.js Canvas will be appended here -->
-
-        <!-- Game Overlay UI -->
-        <div id="overlay">
-            <div id="crosshair"></div>
-
-            <!-- Left Score -->
-            <div class="absolute top-4 left-4 score-box text-xl font-bold">
-                SCORE: <span id="current-score">0</span>
-            </div>
-            
-            <!-- Center Timer -->
-            <div class="absolute top-4 left-1/2 transform -translate-x-1/2 timer-box text-xl font-bold text-yellow-300">
-                TIMER: <span id="timer">0.00</span>s
-            </div>
-
-            <!-- Right High Score -->
-            <div class="absolute top-4 right-4 score-box text-xl font-bold">
-                HIGH SCORE: <span id="high-score">0</span>
-            </div>
-            
-            <div id="instructions" class="absolute bottom-4 left-1/2 transform -translate-x-1/2 p-3 bg-yellow-600 text-black rounded-lg font-semibold shadow-lg transition-opacity duration-500">
-                Click to unlock camera. WASD to move. Click to shoot!
-            </div>
-        </div>
-
-        <!-- Start/Pause Menu -->
-        <div id="menu">
-            <h1 class="text-5xl font-extrabold mb-4 text-white">3D Hawker Food Shooter</h1>
-            <p class="text-lg mb-2 text-gray-300">Shoot the floating hawker items for 10 points each!</p>
-            <p class="text-sm mb-8 text-yellow-300">Quick completion awards a bonus of up to 150 points.</p>
-            <button id="start-button" class="px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xl font-bold rounded-xl shadow-2xl transition transform hover:scale-105" onclick="startGame()">
-                Start Game
-            </button>
-            <div id="status-message" class="mt-8 text-lg font-mono text-gray-400">Initializing...</div>
-        </div>
-
+  <div id="gameContainer">
+    <!-- Start overlay -->
+    <div id="overlay">
+      <div class="bg-green-900/80 rounded-xl shadow-xl p-6 w-[90vw] max-w-[640px] text-center border border-green-600">
+        <h1 class="text-2xl font-bold tracking-wide mb-2">CORPORATE LADDER</h1>
+        <p class="text-sm opacity-90 mb-5">Climb the ladder. Stomp on meetings. Collect your salary. Don’t burnout.</p>
+        <button id="start-button"
+          class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:scale-[.98] text-black font-semibold transition">
+          Start Game
+        </button>
+        <p id="status-message" class="text-xs mt-3 opacity-80">Audio will start after you click “Start Game”.</p>
+      </div>
     </div>
 
-    <script>
-        // --- Firebase Setup and State Management ---
-
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-
-        let db, auth, userId = 'anon_user_' + (typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random());
-        let gameInitialized = false;
-        let globalHighScore = 0;
-
-        const HIGH_SCORE_PATH = `artifacts/${appId}/public/data/highscores`;
-        const HIGH_SCORE_DOC = 'fps_high_score';
-
-        async function initializeFirebase() {
-            try {
-                if (!firebaseConfig) {
-                    // Fallback for downloaded file where global variables are not defined
-                    throw new Error("Firebase configuration not available (Running in offline mode).");
-                }
-
-                const app = firebase.initializeApp(firebaseConfig);
-                db = firestore.getFirestore(app);
-                auth = firebase.getAuth(app);
-
-                // Use the provided auth token or sign in anonymously
-                if (typeof __initial_auth_token !== 'undefined') {
-                    await firebase.signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await firebase.signInAnonymously(auth);
-                }
-
-                // Wait for auth state to be confirmed
-                await new Promise(resolve => {
-                    const unsubscribe = firebase.onAuthStateChanged(auth, (user) => {
-                        if (user) {
-                            userId = user.uid;
-                        }
-                        unsubscribe();
-                        resolve();
-                    });
-                });
-
-                // Start listening for high score updates
-                listenForHighScore();
-
-                document.getElementById('status-message').textContent = `Firebase connected. User ID: ${userId.substring(0, 8)}...`;
-                gameInitialized = true;
-                initGame(); // Initialize Three.js after Firebase is ready
-
-            } catch (error) {
-                console.error("Firebase initialization failed. Game will run locally (High score disabled).", error);
-                document.getElementById('status-message').textContent = "Firebase failed. Running in local mode (High score is disabled).";
-                gameInitialized = true;
-                initGame(); // Initialize Three.js even if Firebase fails
-            }
-        }
-
-        function listenForHighScore() {
-            if (!db) return;
-
-            const highScoreRef = firestore.doc(db, HIGH_SCORE_PATH, HIGH_SCORE_DOC);
-
-            // Real-time listener
-            firestore.onSnapshot(highScoreRef, (doc) => {
-                if (doc.exists()) {
-                    const data = doc.data();
-                    if (data && typeof data.score === 'number') {
-                        globalHighScore = data.score;
-                        document.getElementById('high-score').textContent = globalHighScore;
-                    }
-                } else {
-                    console.log("High score document does not exist. Creating default.");
-                    updateHighScore(0); // Create the document if it doesn't exist
-                }
-            }, (error) => {
-                console.error("Error listening to high score:", error);
-            });
-        }
-
-        async function updateHighScore(newScore) {
-            if (!db || newScore <= globalHighScore) return;
-
-            const highScoreRef = firestore.doc(db, HIGH_SCORE_PATH, HIGH_SCORE_DOC);
-            
-            try {
-                await firestore.setDoc(highScoreRef, {
-                    score: newScore,
-                    userId: userId,
-                    timestamp: new Date().toISOString()
-                }, { merge: true });
-                console.log("High score updated successfully:", newScore);
-            } catch (error) {
-                console.error("Failed to update high score:", error);
-            }
-        }
-
-        // --- Tone.js Sound Setup ---
-        let shootSynth, scoreSynth;
-
-        function setupToneJs() {
-            if (typeof Tone === 'undefined') return;
-
-            // Simple noise burst for shooting
-            shootSynth = new Tone.NoiseSynth({
-                noise: { type: 'pink' },
-                envelope: { attack: 0.005, decay: 0.1, sustain: 0, release: 0.05 },
-            }).toDestination();
-
-            // Simple chime for scoring
-            scoreSynth = new Tone.PolySynth(Tone.DuoSynth, {
-                oscillator: { type: "sine" },
-                envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.5 },
-                volume: -10
-            }).toDestination();
-        }
-
-        function playShootSound() {
-            if (shootSynth) {
-                shootSynth.triggerAttackRelease(0.1);
-            }
-        }
-
-        function playScoreSound() {
-            if (scoreSynth) {
-                // Play a simple ascending fifth chord (C4, G4, C5)
-                scoreSynth.triggerAttackRelease(["C4", "G4", "C5"], "8n");
-            }
-        }
-
-
-        // --- Three.js & Game Logic ---
-
-        let scene, camera, renderer, controls;
-        let raycaster, mouse = new THREE.Vector2();
-        let targets = [];
-        let bullets = []; // New array for visible projectiles
-        let currentScore = 0;
-        let isGameRunning = false;
-        let container;
-
-        // Projectile Constants
-        const BULLET_SPEED = 5000;
-        const BULLET_RADIUS = 5;
-        const bulletGeometry = new THREE.SphereGeometry(BULLET_RADIUS, 8, 8);
-        const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 }); 
-
-        // Player/Movement state
-        let moveForward = false;
-        let moveBackward = false;
-        let moveLeft = false;
-        let moveRight = false;
-        let velocity = new THREE.Vector3();
-        // Increased speed for a faster pace
-        const SPEED = 1200.0; 
-        const PLAYER_HEIGHT = 50;
-        const PLAYER_RADIUS = 30; // Radius used for collision checking
-
-        // Timer and Bonus State
-        let gameStartTime = 0;
-        let timeElapsed = 0;
-        let currentBonusPoints = 0;
-        const INITIAL_BONUS_POINTS = 150;
-        // Bonus points remain fixed for 10 seconds.
-        const BONUS_START_DELAY = 10; // seconds 
-        const BONUS_DECREMENT_RATE = 10; // points per second
-
-        // Maze Definition (10x10)
-        const MAZE_GRID = [
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 1, 0, 1, 1, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 1, 0, 1],
-            [1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 1, 1, 1, 1, 1, 0, 1],
-            [1, 0, 1, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 0, 0, 1, 1, 1, 1, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        ];
-        const WALL_SIZE = 200; // Size of one cell in Three.js units
-        const MAZE_GRID_SIZE = MAZE_GRID.length;
-        const MAZE_TOTAL_SIZE = MAZE_GRID_SIZE * WALL_SIZE;
-        const MAZE_OFFSET = MAZE_TOTAL_SIZE / 2 - WALL_SIZE / 2;
-
-
-        function initGame() {
-            container = document.getElementById('game-container');
-
-            // 1. Scene Setup
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x334155); // Slate gray background
-            scene.fog = new THREE.Fog(0x334155, 0, MAZE_TOTAL_SIZE * 0.8);
-
-            // 2. Camera Setup
-            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 1, 1000);
-            camera.position.set(WALL_SIZE * 1.5 - MAZE_OFFSET, PLAYER_HEIGHT, WALL_SIZE * 1.5 - MAZE_OFFSET); // Start position (1,1)
-
-            // 3. Renderer Setup
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(container.clientWidth, container.clientHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            container.appendChild(renderer.domElement);
-
-            // 4. Lighting
-            const light = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
-            light.position.set(0, 200, 0);
-            scene.add(light);
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
-            dirLight.position.set(100, 200, 100);
-            scene.add(dirLight);
-
-            // 5. Controls
-            controls = new THREE.PointerLockControls(camera, document.body);
-            controls.enabled = false; // Disable until game starts
-
-            // Lock/Unlock events
-            controls.addEventListener('lock', () => {
-                isGameRunning = true;
-                // START TIMER
-                gameStartTime = performance.now();
-                document.getElementById('menu').style.opacity = '0';
-                document.getElementById('menu').style.pointerEvents = 'none';
-                document.getElementById('instructions').style.opacity = '0';
-                Tone.start(); // Start audio context on first interaction
-            });
-
-            controls.addEventListener('unlock', () => {
-                isGameRunning = false;
-                document.getElementById('menu').style.opacity = '1';
-                document.getElementById('menu').style.pointerEvents = 'auto';
-            });
-
-            // Start button click to request pointer lock
-            document.getElementById('start-button').addEventListener('click', () => {
-                // Now handled by startGame, which checks initialization state
-                if (controls) {
-                    controls.lock();
-                }
-            });
-
-            // 6. Raycaster for Shooting and Collision
-            raycaster = new THREE.Raycaster();
-            // Set raycaster near/far for collision checks
-            raycaster.near = 0; 
-
-            // 7. Build World
-            buildMaze();
-            placeTargets();
-            setupMovementListeners();
-            window.addEventListener('resize', onWindowResize, false);
-            document.addEventListener('click', onDocumentClick, false);
-
-            // 8. Start Loop
-            prevTime = performance.now();
-            animate();
-        }
-
-        function onWindowResize() {
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
-        }
-
-        // --- Maze and Target Creation ---
-
-        const geometryWall = new THREE.BoxGeometry(WALL_SIZE, WALL_SIZE, WALL_SIZE);
-        const materialWall = new THREE.MeshPhongMaterial({ color: 0x888888 });
-        const collidableObjects = []; // Objects to check collision against
-
-        function buildMaze() {
-            // 1. Floor
-            const floorGeometry = new THREE.PlaneGeometry(MAZE_TOTAL_SIZE, MAZE_TOTAL_SIZE, 10, 10);
-            // Floor material color changed to a deep green
-            const floorMaterial = new THREE.MeshPhongMaterial({ color: 0x38761d, side: THREE.DoubleSide });
-            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-            floor.rotation.x = Math.PI / 2;
-            floor.position.y = 0;
-            scene.add(floor);
-
-            // 2. Walls
-            for (let i = 0; i < MAZE_GRID_SIZE; i++) {
-                for (let j = 0; j < MAZE_GRID_SIZE; j++) {
-                    if (MAZE_GRID[i][j] === 1) {
-                        const wall = new THREE.Mesh(geometryWall, materialWall);
-                        // Convert grid coordinates (i, j) to Three.js world coordinates
-                        wall.position.x = j * WALL_SIZE - MAZE_OFFSET;
-                        wall.position.y = WALL_SIZE / 2;
-                        wall.position.z = i * WALL_SIZE - MAZE_OFFSET;
-                        scene.add(wall);
-                        // Add walls to the collidable list
-                        collidableObjects.push(wall);
-                    }
-                }
-            }
-        }
-
-        function placeTargets() {
-            const TARGET_COUNT = 15;
-            // Updated targets to represent hawker food items
-            const targetTypes = [
-                // Chili Crab Box - Bright Orange/Red Box
-                { name: 'Chili Crab Box', shape: new THREE.BoxGeometry(40, 40, 40), color: 0xff4500, type: 'box' }, 
-                // Curry Puff - Golden Yellow Cone/Pyramid shape
-                { name: 'Curry Puff', shape: new THREE.ConeGeometry(35, 70, 4), color: 0xffd700, type: 'cone' }, 
-                // Ice Kacang - Pale Blue/White Sphere
-                { name: 'Ice Kacang', shape: new THREE.SphereGeometry(30, 16, 16), color: 0xf0f8ff, type: 'sphere' }, 
-                // Bubble Tea - Brown/Black Cylinder
-                { name: 'Bubble Tea', shape: new THREE.CylinderGeometry(25, 25, 80, 16), color: 0x4B3832, type: 'cylinder' }, 
-            ];
-
-            targets.forEach(t => scene.remove(t)); // Clear existing targets
-            targets = [];
-
-            let placedCount = 0;
-            while (placedCount < TARGET_COUNT) {
-                // Pick a random open cell (excluding the start cell 1,1)
-                let i = Math.floor(Math.random() * (MAZE_GRID_SIZE - 2)) + 1;
-                let j = Math.floor(Math.random() * (MAZE_GRID_SIZE - 2)) + 1;
-
-                if (MAZE_GRID[i][j] === 0) {
-                    const type = targetTypes[placedCount % targetTypes.length];
-                    const material = new THREE.MeshBasicMaterial({ color: type.color });
-                    const target = new THREE.Mesh(type.shape, material);
-
-                    // Position in the center of the cell
-                    target.position.x = j * WALL_SIZE - MAZE_OFFSET;
-                    // Adjust height based on shape geometry
-                    target.position.y = type.type === 'cylinder' || type.type === 'cone' ? 40 : PLAYER_HEIGHT;
-                    target.position.z = i * WALL_SIZE - MAZE_OFFSET;
-
-                    // Tag for raycasting identification
-                    target.isTarget = true;
-                    target.points = 10;
-                    targets.push(target);
-                    scene.add(target);
-                    placedCount++;
-                    MAZE_GRID[i][j] = 2; // Mark cell as occupied by a target (temporary for placement)
-                }
-            }
-            // Reset grid marks
-            for (let i = 0; i < MAZE_GRID_SIZE; i++) {
-                for (let j = 0; j < MAZE_GRID_SIZE; j++) {
-                    if (MAZE_GRID[i][j] === 2) MAZE_GRID[i][j] = 0;
-                }
-            }
-        }
-
-        // --- Interaction and Scoring ---
-
-        function updateScore(points, isBonus = false) {
-            currentScore += points;
-            document.getElementById('current-score').textContent = currentScore;
-            
-            if (!isBonus) {
-                playScoreSound();
-            }
-
-            if (currentScore > globalHighScore) {
-                updateHighScore(currentScore);
-            }
-        }
-
-        function spawnBullet() {
-            // 1. Create bullet mesh
-            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
-            
-            // 2. Position it slightly in front of the camera
-            const playerObject = controls.getObject();
-            const direction = new THREE.Vector3();
-            playerObject.getWorldDirection(direction);
-            
-            // Start slightly in front of player to avoid immediate self-collision
-            bullet.position.copy(playerObject.position).add(direction.clone().multiplyScalar(PLAYER_RADIUS + 10)); 
-            
-            // 3. Set velocity (using userData for non-mesh properties)
-            bullet.userData.velocity = direction.multiplyScalar(BULLET_SPEED);
-            
-            // 4. Add to scene and list
-            scene.add(bullet);
-            bullets.push(bullet);
-
-            playShootSound();
-        }
-
-        function onDocumentClick(event) {
-            if (!isGameRunning) return;
-            
-            spawnBullet(); 
-        }
-
-
-        // --- Movement and Collision ---
-        
-        function setupMovementListeners() {
-            const onKeyDown = function (event) {
-                switch (event.code) {
-                    case 'KeyW': moveForward = true; break;
-                    case 'KeyA': moveLeft = true; break;
-                    case 'KeyS': moveBackward = true; break;
-                    case 'KeyD': moveRight = true; break;
-                }
-            };
-
-            const onKeyUp = function (event) {
-                switch (event.code) {
-                    case 'KeyW': moveForward = false; break;
-                    case 'KeyA': moveLeft = false; break;
-                    case 'KeyS': moveBackward = false; break;
-                    case 'KeyD': moveRight = false; break;
-                }
-            };
-
-            document.addEventListener('keydown', onKeyDown);
-            document.addEventListener('keyup', onKeyUp);
-        }
-
-        // --- Game Loop ---
-
-        let prevTime = performance.now();
-        const forwardVector = new THREE.Vector3();
-        const rightVector = new THREE.Vector3();
-        
-        function animate(time) {
-            requestAnimationFrame(animate);
-
-            if (isGameRunning) {
-                const delta = (time - prevTime) / 1000;
-                
-                // --- 1. Timer and Bonus Update Logic ---
-                timeElapsed = (time - gameStartTime) / 1000;
-                document.getElementById('timer').textContent = timeElapsed.toFixed(2);
-                
-                if (timeElapsed >= BONUS_START_DELAY) {
-                    const reductionTime = timeElapsed - BONUS_START_DELAY;
-                    const secondsReduced = Math.floor(reductionTime);
-                    const reductionAmount = secondsReduced * BONUS_DECREMENT_RATE;
-                    
-                    // Calculate and clamp bonus points
-                    currentBonusPoints = Math.max(0, INITIAL_BONUS_POINTS - reductionAmount);
-                } else {
-                    // Bonus stays at initial value during the delay period
-                    currentBonusPoints = INITIAL_BONUS_POINTS;
-                }
-
-                
-                // Get the player camera object
-                const playerObject = controls.getObject();
-
-                // 2. Calculate raw velocity based on input and camera direction (Non-static movement)
-                // Reset velocity components for new frame's input
-                velocity.set(0, 0, 0); 
-                
-                // Get current camera directions (X/Z plane only)
-                playerObject.getWorldDirection(forwardVector);
-                forwardVector.y = 0; 
-                forwardVector.normalize();
-                
-                // Right vector is perpendicular to forward vector and up vector
-                rightVector.crossVectors(playerObject.up, forwardVector);
-
-                // Add to velocity based on input keys
-                if (moveForward) velocity.add(forwardVector.clone().multiplyScalar(SPEED * delta));
-                if (moveBackward) velocity.sub(forwardVector.clone().multiplyScalar(SPEED * delta));
-                
-                // A key: adds the current rightVector (moves left)
-                if (moveLeft) velocity.add(rightVector.clone().multiplyScalar(SPEED * delta));  
-                // D key: subtracts the current rightVector (moves right)
-                if (moveRight) velocity.sub(rightVector.clone().multiplyScalar(SPEED * delta)); 
-
-                // 3. Apply damping (friction/inertia)
-                const dampingFactor = Math.pow(0.5, delta * 10);
-                velocity.multiplyScalar(dampingFactor);
-
-                // 4. Raycasting Collision Check (Player Movement)
-                const intendedMovement = velocity.clone();
-                const distance = intendedMovement.length();
-
-                if (distance > 0.1) {
-                    // Ray direction is the normalized movement vector
-                    const direction = intendedMovement.clone().normalize();
-                    
-                    // Ray origin is the current player position
-                    raycaster.set(playerObject.position, direction);
-
-                    // Check for intersection with walls
-                    const intersects = raycaster.intersectObjects(collidableObjects);
-                    
-                    if (intersects.length > 0) {
-                        const hit = intersects[0];
-                        // Distance to the wall minus player radius (plus a small buffer)
-                        const safeDistance = hit.distance - PLAYER_RADIUS - 1; 
-
-                        if (safeDistance < distance) {
-                            if (safeDistance > 0) {
-                                // Only allow movement up to the safe distance
-                                intendedMovement.setLength(safeDistance);
-                            } else {
-                                // Block all movement if already too close
-                                intendedMovement.set(0, 0, 0);
-                                velocity.set(0, 0, 0); 
-                            }
-                        }
-                    }
-                }
-
-                // 5. Apply Safe Movement (Direct Position Update)
-                playerObject.position.add(intendedMovement);
-                
-                // 6. Clamp to Maze Boundaries and Height
-                playerObject.position.y = PLAYER_HEIGHT;
-                const max = MAZE_TOTAL_SIZE / 2 - PLAYER_RADIUS;
-                playerObject.position.x = Math.max(-max, Math.min(max, playerObject.position.x));
-                playerObject.position.z = Math.max(-max, Math.min(max, playerObject.position.z));
-                
-                
-                // 7. Update and check visible bullets
-                const survivingBullets = [];
-                for (let i = 0; i < bullets.length; i++) {
-                    const bullet = bullets[i];
-                    const oldPosition = bullet.position.clone();
-                    
-                    // Move bullet
-                    const movementVector = bullet.userData.velocity.clone().multiplyScalar(delta);
-                    bullet.position.add(movementVector);
-
-                    // Bullet Raycasting (from old position to new position)
-                    const rayDirection = movementVector.clone().normalize();
-                    const rayDistance = movementVector.length();
-
-                    raycaster.set(oldPosition, rayDirection);
-                    raycaster.far = rayDistance; // Only check up to the distance traveled this frame
-
-                    let shouldRemoveBullet = false;
-                    
-                    // Check targets first
-                    const targetIntersects = raycaster.intersectObjects(targets);
-
-                    if (targetIntersects.length > 0) {
-                        const targetMesh = targetIntersects[0].object;
-                        if (targetMesh.isTarget) {
-                            // Score, remove target, and flag bullet for removal
-                            updateScore(targetMesh.points);
-                            scene.remove(targetMesh);
-                            targets = targets.filter(t => t !== targetMesh);
-                            targetMesh.geometry.dispose();
-                            targetMesh.material.dispose();
-                            shouldRemoveBullet = true;
-                            
-                            if (targets.length === 0) {
-                                // Game Over / Level Complete check
-                                
-                                // *** APPLY BONUS SCORE HERE ***
-                                updateScore(currentBonusPoints, true);
-                                
-                                controls.unlock();
-                                document.getElementById('status-message').innerHTML = `
-                                    **LEVEL COMPLETE!**<br>
-                                    Time: ${timeElapsed.toFixed(2)}s<br>
-                                    Time Bonus: ${currentBonusPoints} points!<br>
-                                    Final Score: ${currentScore}<br>
-                                    Click "Start Game" to play again.
-                                `;
-                            }
-                        }
-                    }
-                    
-                    // Check walls (only if target wasn't hit)
-                    if (!shouldRemoveBullet) {
-                         const wallIntersects = raycaster.intersectObjects(collidableObjects);
-                        if (wallIntersects.length > 0) {
-                            // Wall hit, flag bullet for removal
-                            shouldRemoveBullet = true;
-                        }
-                    }
-
-                    if (shouldRemoveBullet) {
-                        // Remove bullet from scene and dispose resources
-                        scene.remove(bullet);
-                        bullet.geometry.dispose();
-                        bullet.material.dispose();
-                    } else {
-                        // If no collision, keep the bullet
-                        survivingBullets.push(bullet);
-                    }
-                }
-                bullets = survivingBullets; // Update the list of active bullets
-
-                // Reset raycaster far for next frame's player movement checks
-                raycaster.far = 1000; 
-            }
-
-            prevTime = time;
-            renderer.render(scene, camera);
-        }
-
-        // --- Game Functions ---
-
-        function resetGame() {
-            currentScore = 0;
-            document.getElementById('current-score').textContent = currentScore;
-            
-            // Reset Timer/Bonus State
-            gameStartTime = 0;
-            timeElapsed = 0;
-            currentBonusPoints = INITIAL_BONUS_POINTS;
-            document.getElementById('timer').textContent = '0.00';
-            
-            // Clear any lingering bullets
-            bullets.forEach(b => {
-                scene.remove(b);
-                b.geometry.dispose();
-                b.material.dispose();
-            });
-            bullets = [];
-
-            // Reset position to start (1,1)
-            camera.position.set(WALL_SIZE * 1.5 - MAZE_OFFSET, PLAYER_HEIGHT, WALL_SIZE * 1.5 - MAZE_OFFSET);
-            camera.rotation.set(0, 0, 0);
-            controls.getObject().position.copy(camera.position);
-
-            // Rebuild targets
-            placeTargets();
-        }
-
-        window.startGame = function() {
-            // FIX: Ensure controls object is initialized before attempting to lock.
-            if (!controls) {
-                 // If controls aren't ready, the game is still initializing. 
-                 // The click handler inside initGame() will handle the lock once initialized.
-                 document.getElementById('status-message').textContent = "Game still initializing. Please wait a moment...";
-                 return;
-            }
-
-            // Re-lock pointer controls (user must have clicked)
-            controls.lock();
-
-            // Only run the initialization sequence once
-            if (!gameInitialized) {
-                // Wait for init to finish
-                document.getElementById('status-message').textContent = "Game still initializing...";
-                return;
-            }
-
-            // If game is initialized, reset and start
-            document.getElementById('status-message').textContent = "";
-            resetGame();
-        }
-
-
-        // Global setup on load
-        window.onload = () => {
-            initializeFirebase();
-            setupToneJs();
-        }
-    </script>
+    <!-- Status (bottom-left) -->
+    <div id="status" class="text-emerald-200"></div>
+  </div>
+
+  <script>
+    /**************
+     * Firebase (optional)
+     * If you don't have Firebase yet, leave this as null and the game will run without online scores.
+     **************/
+    const firebaseConfig = null; // <-- paste your Firebase config object here later
+
+    async function initializeFirebase() {
+      if (!firebaseConfig) {
+        setStatus("Running without online high scores (no Firebase config).");
+        gameInitialized = true;
+        initGame();
+        return;
+      }
+      try {
+        // Example (uncomment if you add Firebase SDKs):
+        // const app = firebase.initializeApp(firebaseConfig);
+        // const db  = firebase.firestore();
+        setStatus("Firebase connected.");
+      } catch (e) {
+        setStatus("Firebase not available. Running offline.");
+      } finally {
+        gameInitialized = true;
+        initGame();
+      }
+    }
+
+    /**************
+     * Globals
+     **************/
+    let gameInitialized = false;
+    let scene, camera, renderer, controls, cube, clock;
+
+    const container = document.getElementById('gameContainer');
+    const overlay   = document.getElementById('overlay');
+    const startBtn  = document.getElementById('start-button');
+    const statusEl  = document.getElementById('status');
+    const note      = document.getElementById('status-message');
+
+    function setStatus(msg) {
+      if (statusEl) statusEl.textContent = msg || "";
+    }
+
+    /**************
+     * User-gesture start:
+     * 1) Start Tone.js audio
+     * 2) Lock pointer on the canvas
+     * 3) Hide overlay and kick off the loop
+     **************/
+    startBtn.addEventListener('click', async () => {
+      try { if (typeof Tone !== 'undefined') await Tone.start(); } catch {}
+      note.textContent = "Audio started.";
+
+      // If controls are ready, request lock
+      if (controls) controls.lock();
+
+      overlay.style.display = 'none';
+      // play a tiny blip to confirm audio works (optional)
+      try {
+        const synth = new Tone.Synth().toDestination();
+        synth.triggerAttackRelease("C5", "8n");
+      } catch {}
+    });
+
+    /**************
+     * Game init (Three.js + Pointer Lock on canvas)
+     **************/
+    function initGame() {
+      // WebGL check
+      if (!WEBGL.isWebGLAvailable()) {
+        note.textContent = "WebGL isn't available. Try Chrome/Edge with hardware acceleration.";
+        overlay.style.display = 'grid';
+        return;
+      }
+
+      clock = new THREE.Clock();
+
+      // Scene & Camera
+      scene  = new THREE.Scene();
+      scene.background = new THREE.Color(0x0b1f12);
+      camera = new THREE.PerspectiveCamera(70, container.clientWidth / container.clientHeight, 0.1, 1000);
+      camera.position.set(0, 1.6, 4);
+
+      // Renderer (attach canvas to container)
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance',
+      });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      container.appendChild(renderer.domElement);
+
+      // Pointer Lock controls bound to the canvas (not document.body)
+      controls = new THREE.PointerLockControls(camera, renderer.domElement);
+
+      // Basic scene content (replace with your actual game world)
+      const light = new THREE.DirectionalLight(0xffffff, 1.0);
+      light.position.set(3, 5, 2);
+      scene.add(light, new THREE.AmbientLight(0xffffff, 0.15));
+
+      const geo = new THREE.BoxGeometry(1,1,1);
+      const mat = new THREE.MeshStandardMaterial({ color: 0x27ae60, roughness: 0.4, metalness: 0.1 });
+      cube = new THREE.Mesh(geo, mat);
+      scene.add(cube);
+
+      // Ground
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(50, 50),
+        new THREE.MeshStandardMaterial({ color: 0x123d22, roughness: 1 })
+      );
+      ground.rotation.x = -Math.PI/2;
+      ground.position.y = -1;
+      scene.add(ground);
+
+      // Events
+      window.addEventListener('resize', onResize, false);
+      controls.addEventListener('lock', () => setStatus("Pointer locked. Press ESC to unlock."));
+      controls.addEventListener('unlock', () => setStatus("Pointer unlocked. Click to lock."));
+
+      // Kick off render loop
+      animate();
+    }
+
+    function onResize() {
+      if (!renderer || !camera) return;
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+
+      // demo spin (replace with your game loop)
+      if (cube) cube.rotation.y += dt * 0.6;
+
+      renderer.render(scene, camera);
+    }
+
+    /**************
+     * Boot
+     **************/
+    window.addEventListener('load', () => {
+      setStatus("Loading…");
+      initializeFirebase(); // will gracefully skip if no config
+    });
+  </script>
 </body>
 </html>
