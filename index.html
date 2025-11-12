@@ -129,28 +129,13 @@
     <script>
         // --- Firebase Setup and State Management ---
 
-        // *** IMPORTANT ***
-        // PASTE YOUR FIREBASE CONFIG OBJECT HERE
-        // You can get this from your Firebase project settings
-       <script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  const firebaseConfig = {
+       const firebaseConfig = {
     apiKey: "AIzaSyAotNssLaLf6zna_TsHejYLLiRHgcni_A4",
     authDomain: "hawker-fps-game.firebaseapp.com",
     projectId: "hawker-fps-game",
     storageBucket: "hawker-fps-game.firebasestorage.app",
     messagingSenderId: "426224129407",
     appId: "1:426224129407:web:f23ea1c3378fe6a11f764a"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-</script>
         // *** END OF CONFIG ***
 
         let db, auth, userId = 'anon_user_' + (typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random());
